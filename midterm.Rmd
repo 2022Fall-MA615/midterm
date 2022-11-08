@@ -1,0 +1,129 @@
+---
+title: "midterm"
+author: "Yalong Wang"
+date: "2022-11-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+library(readxl)
+```
+
+```{r}
+data_strawberry <- read_xlsx('/Users/yaron/study/615/data/strawberries-2022oct30-a.xlsx',col_names = T)
+
+T <- NULL
+cnames <- colnames(data_strawberry)
+x <- 1:dim(data_strawberry)[2]
+for(i in x){T <- c(T, dim(unique(data_strawberry[i]))[1])}
+drop_cols <- cnames[which(T == 1)]
+data_strawberry %<>% select(!all_of(drop_cols))
+
+data_strawberry %<>% arrange(Year, State)
+
+data_strawberry %<>% separate(col=`Data Item`,
+                     into = c("Strawberries", "type", "items", "units"),
+                     sep = ",",
+                     fill = "right")
+
+
+type_organic <- grep("organic", 
+                     data_strawberry$type, 
+                     ignore.case = T)
+Domain_organic <- grep("organic", 
+                       data_strawberry$Domain, 
+                       ignore.case = T)
+org_rows <- intersect(type_organic, Domain_organic)
+strawb_organic <- data_strawberry %>% slice(org_rows, preserve = FALSE)
+strawb_non_organic <- data_strawberry %>% filter(!row_number() %in% org_rows)
+chem_rows <- grep("BEARING - APPLICATIONS", 
+                  strawb_non_organic$type, 
+                  ignore.case = T)
+strawb_chem <- strawb_non_organic %>% slice(chem_rows, preserve = FALSE)
+rm(type_organic, Domain_organic, org_rows, chem_rows,cnames,drop_cols,i,T,x)
+
+
+before_cols = colnames(strawb_chem)
+T = NULL
+x = length(before_cols)
+for(i in 1:x){
+  b <- length(unlist(strawb_chem[,i] %>% unique()) )
+  T <- c(T,b)
+}
+drop_cols <- before_cols[which(T == 1)]
+strawb_chem %<>% select(!all_of(drop_cols))
+
+
+strawb_chem %<>% separate(col=`Domain Category`, 
+                          into = c("dc1", "chem_name"),
+                          sep = ":", 
+                          fill = "right")
+
+strawb_chem %<>% select(Year, State, items, units, dc1, chem_name, Value)
+strawb_chem %<>% rename(category = units)
+strawb_chem$items <- str_remove_all(strawb_chem$items, "MEASURED IN ")
+strawb_chem %<>% rename(units = items)
+strawb_chem$dc1 <- str_remove_all(strawb_chem$dc1, "CHEMICAL, ")
+strawb_chem$dc1 %>% unique()
+strawb_chem %<>% rename(chem_types = dc1)
+
+strawb_chem$chem_name <- str_remove_all(strawb_chem$chem_name, "\\(")
+strawb_chem$chem_name <- str_remove_all(strawb_chem$chem_name, "\\)")
+strawb_chem %<>% separate(col = chem_name,
+                          into = c("chem_name","chem_code"),
+                          sep = "=",
+                          fill = "right"
+) 
+rm(b, before_cols,drop_cols,i,T,x)
+
+#Drop NAs and Ds
+NA_rows <- grep("(NA)",strawb_chem$Value,
+                    ignore.case =T)
+D_rows <- grep("(D)",strawb_chem$Value,
+                   ignore.case =T)
+Z_rows <- grep("(Z)",strawb_chem$Value,
+               ignore.case =T)
+uncleaned_rows <- sort(c(NA_rows,D_rows,Z_rows), decreasing = FALSE)
+strawb_chem<-strawb_chem[-uncleaned_rows,]
+strawb_chem$Value <- as.numeric(strawb_chem$Value)
+
+rm(D_rows,NA_rows,Z_rows,uncleaned_rows)
+```
+
+```{r}
+strawb_chem_2016 <- sum(strawb_chem[strawb_chem$Year=='2016',c('Value')])
+strawb_chem_2017 <- sum(strawb_chem[strawb_chem$Year=='2017',c('Value')])
+strawb_chem_2018 <- sum(strawb_chem[strawb_chem$Year=='2018',c('Value')])
+strawb_chem_2019 <- sum(strawb_chem[strawb_chem$Year=='2019',c('Value')])
+strawb_chem_2020 <- sum(strawb_chem[strawb_chem$Year=='2020',c('Value')])
+strawb_chem_2021 <- sum(strawb_chem[strawb_chem$Year=='2021',c('Value')])
+data_year <- tibble(year = c('2016','2017','2018','2019','2020','2021'),Value = c(strawb_chem_2016,strawb_chem_2017,strawb_chem_2018,strawb_chem_2019,
+                                    strawb_chem_2020,strawb_chem_2021))
+ggplot(data_year) +
+  aes(x = year, y = Value) +
+  geom_col(fill = "#112446") +
+  labs(
+    y = "The total value of chemical",
+    title = "The total value of chemical by years"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+strawb_chem_CALIFORNIA <- sum(strawb_chem[strawb_chem$State=='CALIFORNIA',c('Value')])
+strawb_chem_FLORIDA <- sum(strawb_chem[strawb_chem$State=='FLORIDA',c('Value')])
+strawb_chem_OREGON <- sum(strawb_chem[strawb_chem$State=='OREGON',c('Value')])
+data_State <- tibble(State = c('CALIFORNIA','FLORIDA','OREGON'),Value = c(strawb_chem_CALIFORNIA,strawb_chem_FLORIDA,strawb_chem_OREGON))
+ggplot(data_State) +
+  aes(x = State, y = Value) +
+  geom_col(fill = "#112446") +
+  labs(
+    y = "the total value of chemical",
+    title = "the total value of chemical by states"
+  ) +
+  theme_minimal()
+```
